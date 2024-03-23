@@ -14,10 +14,11 @@ from bridge.reply import Reply, ReplyType
 from common.log import logger
 from config import conf
 from bot.baidu.baidu_wenxin_session import BaiduWenxinSession
+from bot.gemini.google_genimi_vision import GeminiVision
 
 
 # OpenAI对话模型API (可用)
-class GoogleGeminiBot(Bot):
+class GoogleGeminiBot(Bot,GeminiVision):
 
     def __init__(self):
         super().__init__()
@@ -34,7 +35,12 @@ class GoogleGeminiBot(Bot):
             session_id = context["session_id"]
             session = self.sessions.session_query(query, session_id)
             gemini_messages = self._convert_to_gemini_messages(self._filter_messages(session.messages))
-            genai.configure(api_key=self.api_key)
+
+            vision_res = self.do_vision_completion_if_need(session_id,query) # Image recongnition and vision completion
+            if vision_res:
+                return vision_res
+
+            genai.configure(api_key=self.api_key,transport='rest')
             model = genai.GenerativeModel('gemini-pro')
             response = model.generate_content(gemini_messages)
             reply_text = response.text
@@ -44,7 +50,6 @@ class GoogleGeminiBot(Bot):
         except Exception as e:
             logger.error("[Gemini] fetch reply error, may contain unsafe content")
             logger.error(e)
-            return Reply(ReplyType.ERROR, "invoke [Gemini] api failed!")
 
     def _convert_to_gemini_messages(self, messages: list):
         res = []
@@ -64,8 +69,6 @@ class GoogleGeminiBot(Bot):
     def _filter_messages(self, messages: list):
         res = []
         turn = "user"
-        if not messages:
-            return res
         for i in range(len(messages) - 1, -1, -1):
             message = messages[i]
             if message.get("role") != turn:
